@@ -412,6 +412,7 @@ dialog.light img{max-width:96vw;max-height:92vh;display:block;border-radius:12px
 <main>
 <!-- ============ CARGAR ============ -->
 <section class="view active" id="view-cargar">
+  <div id="cgEmpresa" style="margin-bottom:14px"></div>
   <div id="demoBanner" class="banner" hidden>
     <span>Estás viendo <b>trades de ejemplo</b> para ver cómo funciona. Cuando cargues los tuyos, borralos.</span>
     <button class="btn sm" id="btnClearDemo" type="button">Borrar ejemplos</button>
@@ -899,7 +900,7 @@ function demoTrades(){
 // ---------- render shared ----------
 function renderStrip(){ const a=accountState(); const today=stats(trades.filter(t=>t.date===todayStr())); const ci=days[todayStr()]||{}; const reasons=[]; if(ci.sleep!=null&&ci.sleep<6) reasons.push(1); if(ci.stress>=4) reasons.push(1); if(ci.energy!=null&&ci.energy<=2) reasons.push(1); if(ci.mind==='revuelta') reasons.push(1); const filled=ci.sleep!=null||ci.energy||ci.stress||ci.mind; const red=trades.filter(t=>t.date===todayStr()&&zoneOf(t)==='r').length; const sem=!filled?'n':(reasons.length>=2||red?'r':(reasons.length===1?'y':'g')); const semTxt={n:'Sin check-in',g:'En condiciones',y:'Con cuidado',r:'No operar'}[sem];
   const meP=profiles.find(p=>p.id===pid); $('#strip').innerHTML=`<div class="cell title"><h1>${esc(meP?meP.name:(settings.firm||'Cuenta fondeada'))}</h1><div class="sub">${esc(settings.firm||'Sin cuenta cargada')}${settings.firm?(settings.phase==='funded'?' · Fondeada':' · Evaluación'):''} · ${fmtDay(todayStr())}</div></div><div class="cell"><div class="l">Balance</div><div class="v">${fmt$(a.bal)}</div></div><div class="cell"><div class="l">Hoy</div><div class="v ${cls(today.net)}">${fmt$(today.net,true)}</div></div><div class="cell"><div class="l">Total</div><div class="v ${cls(a.cum)}">${fmt$(a.cum,true)}</div></div><div class="cell"><div class="l">Margen al drawdown</div><div class="v ${a.dd&&a.room<=a.dd*.25?'neg':(a.dd&&a.room<=a.dd*.5?'warn':'')}">${a.dd?fmt$(a.room):'—'}</div></div><div class="cell"><div class="l">Trades hoy</div><div class="v ${settings.maxt>0&&today.n>=settings.maxt?'warn':''}">${today.n}${settings.maxt>0?' / '+settings.maxt:''}</div></div><div class="cell"><div class="l">Semáforo</div><div class="sem ${sem}"><i></i>${semTxt}</div></div>`; }
-function renderAll(){ try{ refreshAcctSelect(); }catch(e){} renderStrip(); renderReminders(); renderTodayTiles(); renderTodayList(); renderTradesTable(); renderWeek(); renderMonth(); renderAccount(); $('#demoBanner').hidden=!trades.some(t=>t.demo); $('#brandSub').textContent=settings.firm||'ES · NQ'; }
+function renderAll(){ try{ refreshAcctSelect(); renderCargarEmpresa(); }catch(e){} renderStrip(); renderReminders(); renderTodayTiles(); renderTodayList(); renderTradesTable(); renderWeek(); renderMonth(); renderAccount(); $('#demoBanner').hidden=!trades.some(t=>t.demo); $('#brandSub').textContent=settings.firm||'ES · NQ'; }
 function tiles(el,items){ el.innerHTML=items.map(i=>`<div class="tile"><div class="lbl">${i.l}</div><div class="val ${i.c||''}">${i.v}</div>${i.s?`<div class="sub">${i.s}</div>`:''}</div>`).join(''); }
 function curWeekOfToday(){ return mondayOf(todayStr()); }
 
@@ -1453,7 +1454,7 @@ function empCache(){ try{ localStorage.setItem('df:empresa',JSON.stringify(emp))
 async function loadEmpresa(){
   try{ const o=JSON.parse(localStorage.getItem('df:empresa')||'null'); if(o){ emp={cfg:normCfg(o.cfg),accounts:o.accounts||{},costs:o.costs||{},payouts:o.payouts||{},invest:o.invest||{}}; } }catch(e){}
   if(online){ try{ const r=await api('empresa/all'); emp={cfg:normCfg(r.cfg),accounts:r.accounts||{},costs:r.costs||{},payouts:r.payouts||{},invest:r.invest||{}}; empCache(); }catch(e){} }
-  empLoaded=true;
+  empLoaded=true; try{ renderCargarEmpresa(); renderWeekEmpresa(); }catch(e){}
 }
 async function empPut(kind,id,obj){ emp[kind][id]=obj; empCache(); await remote('PUT',`empresa/${kind}/${id}`,obj); }
 async function empDel(kind,id){ delete emp[kind][id]; empCache(); await remote('DELETE',`empresa/${kind}/${id}`); }
@@ -1581,8 +1582,22 @@ async function renderEmpresa(){
 function updatePaySplit(){ const a=emp.accounts[$('#ep_acct')?.value]; const el=$('#ep_split'); if(!a||!el) return; const net=Number($('#ep_net').value||0); const s=splitFor(a,net); el.textContent=net>0?`Reparto${s.first?' (primer retiro de esta cuenta)':''}: reserva ${money(s.reserva)} · sueldo ${money(s.sueldo)} · fondo ${money(s.fondo)}`:'Cargá lo cobrado y te muestro el reparto.'; }
 function fillAcctForm(a){ $('#ea_id').value=a?a.id:''; $('#ea_title').textContent=a?'Editar cuenta':'Agregar cuenta'; if(a){ $('#ea_owner').value=a.owner; const known=!!FIRMS[a.firm]; $('#ea_firm').value=known?a.firm:'__otra'; $('#ea_firmOtherWrap').hidden=known; $('#ea_firmOther').value=known?'':a.firm; $('#ea_size').value=a.size; $('#ea_status').value=a.status; $('#ea_opened').value=a.opened||''; $('#ea_funded').value=a.funded||''; $('#ea_note').value=a.note||''; $('#ea_principal').checked=!!a.principal; $('#ea_cost').value=''; } $('#ea_cancel').hidden=!a; $('#ea_del').hidden=!a; }
 function refreshAcctSelect(){ const w=$('#f_acctWrap'), s=$('#f_acct'); if(!w||!s) return; const l=accts().filter(a=>a.owner===pid&&(a.status==='funded'||a.status==='eval')); if(l.length<2){ w.hidden=true; return; } const cur=s.value; const pr=principalOf(pid); s.innerHTML=l.map(a=>`<option value="${a.id}">${esc(acctName(a))}${pr&&pr.id===a.id?' (principal)':''}</option>`).join(''); s.value=l.some(a=>a.id===cur)?cur:(pr?pr.id:l[0].id); w.hidden=false; }
-function renderWeekEmpresa(){ const el=$('#wkEmpresa'); if(!el) return; const a=principalOf(pid); if(!a||a.status!=='funded'){ el.innerHTML=''; return; } const r=calcRetirable(a,acctTrades(a,trades)); const pend=r.checks.filter(c=>!c.ok); const sp=r.ok&&r.net!=null?splitFor(a,r.net):null;
-  el.innerHTML=`<div class="rem ${r.ok?'good':(r.profit>0?'warn':'info')}"><div><b>${esc(acctName(a))}: ${r.ok?`podés retirar ${money(r.avail)}${r.net!=null?` y cobrar ${money(r.net)}`:''}`:(r.profit>0?`llevás ${fmt$(r.profit,true)} en el período, todavía no retirable`:'período sin ganancia todavía')}</b><p>${r.ok?(sp?`Reparto: reserva ${money(sp.reserva)} · sueldo ${money(sp.sueldo)} · fondo ${money(sp.fondo)}. Pedilo esta semana.`:'Pedilo esta semana.'):(pend[0]?esc(pend[0].txt):'')}</p></div><button class="btn sm" type="button" data-go="empresa">Ver la empresa</button></div>`; }
+function suggestionHtml(){
+  const a=principalOf(pid); const S=stageState(), T=S.T, nf=nextFirm(); const lines=[];
+  let kind='info', title='';
+  if(a&&a.status==='funded'){ const r=calcRetirable(a,acctTrades(a,trades)); const pend=r.checks.filter(c=>!c.ok); const sp=r.ok&&r.net!=null?splitFor(a,r.net):null;
+    if(r.ok){ kind='good'; title=`Hoy: pedí el retiro de ${money(r.avail)} en ${acctName(a)}${r.net!=null?`, cobrás ${money(r.net)}`:''}`; if(sp) lines.push(`Va ${money(sp.reserva)} a la reserva, ${money(sp.sueldo)} a tu sueldo y ${money(sp.fondo)} al fondo de capital.`); }
+    else if(r.profit>0){ kind='warn'; title=`${acctName(a)}: llevás ${fmt$(r.profit,true)} en el período, todavía no se retira`; if(pend[0]) lines.push(pend[0].txt); }
+    else { title=`${acctName(a)}: el período todavía no tiene ganancia`; lines.push('Hoy la sugerencia es una sola: operá el plan. El retiro se arma solo cuando haya ganancia.'); }
+  } else if(a&&a.status==='eval'){ title=`${acctName(a)}: en prueba`; lines.push('Pasar la prueba es la única meta de esta cuenta. El retiro aparece acá cuando esté fondeada.'); }
+  else { title='Todavía no tenés una cuenta cargada en Empresa'; lines.push('Agregala en la pestaña Empresa y acá te va a decir cada día cuánto retirar y adónde va.'); }
+  if(S.st[3].done&&T.fondoDisp>0) lines.push(`Este mes invertí ${money(T.fondoDisp)}: ${money(T.fondoDisp*emp.cfg.pat.bolsa/100)} acciones y bonos, ${money(T.fondoDisp*emp.cfg.pat.re/100)} real estate, ${money(T.fondoDisp*emp.cfg.pat.cripto/100)} cripto.`);
+  else if(S.st[2].state==='cur') lines.push(`Fondo para la cuenta propia: ${money(Math.max(0,T.fondoDisp))} de ${money(emp.cfg.propia)}. Hasta llegar, el fondo no se invierte en otra cosa.`);
+  else if(S.cur.k<=2){ const pipe=accts().some(x=>x.status==='eval'&&!accts().some(y=>y.status==='funded'&&y.firm===x.firm)); if(!pipe&&nf.pick) lines.push(`Siguiente paso de la empresa: abrir la prueba de ${nf.pick} 50K${T.reservaDisp>0?` (la reserva tiene ${money(T.reservaDisp)})`:' cuando la reserva la cubra'}.`); else if(pipe) lines.push('Hay una prueba en curso en una firma nueva: la empresa está diversificando bien.'); }
+  return `<div class="rem ${kind}"><div><b>${esc(title)}</b>${lines.map(l=>`<p>${esc(l)}</p>`).join('')}</div><button class="btn sm" type="button" data-go="empresa">Ver la empresa</button></div>`;
+}
+function renderCargarEmpresa(){ const el=$('#cgEmpresa'); if(!el||!pid) return; if(!empLoaded){ el.innerHTML=''; return; } el.innerHTML=suggestionHtml(); }
+function renderWeekEmpresa(){ const el=$('#wkEmpresa'); if(!el||!pid||!empLoaded) return; el.innerHTML=suggestionHtml(); }
 function initEmpresa(){
   const v=$('#view-empresa'); if(!v) return;
   v.addEventListener('change',e=>{ if(e.target.id==='ea_firm') $('#ea_firmOtherWrap').hidden=e.target.value!=='__otra'; if(e.target.id==='ep_acct'||e.target.id==='ep_net') updatePaySplit(); });

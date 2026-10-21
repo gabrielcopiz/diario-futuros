@@ -41,6 +41,25 @@ export default async (req) => {
       }
     }
 
+    if (parts[0] === 'empresa') {
+      const EK = ['accounts', 'costs', 'payouts', 'invest'];
+      const kind = parts[1], id = parts[2];
+      if (kind === 'all' && m === 'GET') {
+        const [cfg, accounts, costs, payouts, invest] = await Promise.all(['cfg', ...EK].map(x => store.get(`empresa/${x}`, { type: 'json' })));
+        return json({ cfg: cfg || null, accounts: accounts || {}, costs: costs || {}, payouts: payouts || {}, invest: invest || {} });
+      }
+      if (kind === 'cfg') {
+        if (m === 'GET') return json((await store.get('empresa/cfg', { type: 'json' })) || null);
+        if (m === 'PUT') { await store.setJSON('empresa/cfg', await req.json()); return json({ ok: 1 }); }
+      }
+      if (EK.includes(kind)) {
+        const k = `empresa/${kind}`; const map = (await store.get(k, { type: 'json' })) || {};
+        if (m === 'GET') return json(map);
+        if (m === 'PUT' && id) { map[id] = await req.json(); await store.setJSON(k, map); return json({ ok: 1 }); }
+        if (m === 'DELETE' && id) { delete map[id]; await store.setJSON(k, map); return json({ ok: 1 }); }
+      }
+    }
+
     if (parts[0] === 'shot' && parts[1]) {
       const id = parts[1];
       if (m === 'PUT') { const buf = await req.arrayBuffer(); await shots.set(id, buf); return json({ ok: 1, id }); }

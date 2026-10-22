@@ -918,6 +918,9 @@ function curWeekOfToday(){ return mondayOf(todayStr()); }
 // ---------- DÍA SIN OPERAR ----------
 const SKIP_REASONS={senal:'Sin señal del plan',checkin:'Check-in en rojo',noticias:'Noticias o feriado',ausente:'No pude operar',otro:'Otro'};
 function skipOf(ds){ const d=days[ds]; return d&&d.skip?d.skip:null; }
+const SKIP_DISC=new Set(['senal','checkin','noticias']);
+function ciRed(ci){ if(!ci) return false; let r=0; if(ci.sleep!=null&&ci.sleep<6) r++; if(ci.stress>=4) r++; if(ci.energy!=null&&ci.energy<=2) r++; if(ci.mind==='revuelta') r++; return r>=2; }
+function dayDiscipline(ym){ const from=ym+'-01', to=ym+'-31'; const traded=new Set(trades.filter(t=>t.date>=from&&t.date<=to).map(t=>t.date)); const skip=Object.keys(days).filter(ds=>ds>=from&&ds<=to&&days[ds].skip&&!traded.has(ds)); const red=Object.keys(days).filter(ds=>ds>=from&&ds<=to&&ciRed(days[ds])); const redTraded=red.filter(ds=>traded.has(ds)); const redSkipped=red.filter(ds=>!traded.has(ds)); const disc=skip.filter(ds=>SKIP_DISC.has(days[ds].skip.reason)); const out=skip.filter(ds=>!SKIP_DISC.has(days[ds].skip.reason)); return {traded:[...traded],skip,disc,out,red,redTraded,redSkipped}; }
 function skipLabel(sk){ return sk?(SKIP_REASONS[sk.reason]||'Sin operar')+(sk.note?' · '+sk.note:''):''; }
 function renderSkipBox(){ const el=$('#skipBox'); if(!el) return; const di=$('#sk_date'); if(!di.value) di.value=todayStr(); const ds=di.value; const sk=skipOf(ds); const ts=trades.filter(t=>t.date===ds).length; const seg=$('#sk_reasons');
   seg.innerHTML=Object.entries(SKIP_REASONS).map(([k,v])=>`<button type="button" data-v="${k}" aria-pressed="${sk&&sk.reason===k?'true':'false'}">${v}</button>`).join('');
@@ -1140,7 +1143,10 @@ function monthEval(ym){
   facts.flagged=list.filter(t=>(flags.get(t.id)||[]).length).length; facts.flaggedNet=stats(list.filter(t=>(flags.get(t.id)||[]).length)).net; facts.cleanNet=stats(list.filter(t=>!(flags.get(t.id)||[]).length)).net;
   facts.stopDays=lim?dayNets.filter(v=>v<=-lim).length:0; facts.overDays=[...byDay.values()].filter(ts=>settings.maxt>0&&ts.length>settings.maxt).length;
   // 1 Reglas (30%)
-  let rules=NaN; if(n){ rules=100; for(const k of Object.keys(FLAG_COST)) rules-=facts.fc[k].n*FLAG_COST[k]; rules=clamp(rules,0,100); }
+  let rules=NaN; const dd=dayDiscipline(ym); facts.dd=dd; facts.redTradedNet=stats(list.filter(t=>dd.redTraded.includes(t.date))).net;
+  if(n){ let rt=100; for(const k of Object.keys(FLAG_COST)) rt-=facts.fc[k].n*FLAG_COST[k]; rt=clamp(rt,0,100);
+    const flaggedDays=new Set(list.filter(t=>(flags.get(t.id)||[]).length).map(t=>t.date)); const cleanDays=dd.traded.filter(ds=>!flaggedDays.has(ds)&&!dd.redTraded.includes(ds)).length; const planDays=cleanDays+dd.disc.length; const totalDays=dd.traded.length+dd.disc.length; facts.planDays=planDays; facts.totalDays=totalDays;
+    rules=clamp(rt*0.7+(totalDays?planDays/totalDays*100:rt)*0.3,0,100); }
   // 2 Riesgo (25%)
   facts.ratio=s.avgL<0?s.avgW/-s.avgL:(s.avgW>0?3:0); facts.worstVsAvg=s.avgL<0?s.worst/s.avgL:1; facts.streak=s.maxLossStreak; facts.withRisk=list.filter(t=>t.risk>0).length;
   const a=accountState(); facts.ddUsed=a.dd?clamp(1-a.room/a.dd,0,1):0;
@@ -1154,7 +1160,7 @@ function monthEval(ym){
   const target=Number(settings.target||0); facts.net=s.net; let res=NaN; if(n){ const ref=target||Number(settings.dd)||1000; res=s.net<=0?clamp(50+s.net/(Number(settings.dd)||1000)*100,0,40):clamp(50+s.net/ref*100,50,100); }
   // tiempo en el trade
   const hw=list.filter(t=>t.net>0).map(holdMin).filter(v=>v!=null), hl=list.filter(t=>t.net<0).map(holdMin).filter(v=>v!=null); facts.holdW=hw.length?hw.reduce((x,y)=>x+y,0)/hw.length:null; facts.holdL=hl.length?hl.reduce((x,y)=>x+y,0)/hl.length:null;
-  const dims=[{k:'Reglas',v:rules,w:.30,d:'tope diario, horario, tamaño, stop planeado, reentradas, stop diario'},{k:'Riesgo',v:risk,w:.25,d:'ganador vs perdedor, peor pérdida, rachas, stop definido'},{k:'Consistencia',v:cons,w:.25,d:'factor de ganancia, días verdes, peso del mejor día, estabilidad'},{k:'Resultado',v:res,w:.20,d:'neto contra objetivo y drawdown'}];
+  const dims=[{k:'Reglas',v:rules,w:.30,d:'tope diario, horario, tamaño, stop, reentradas, stop diario · días en plan: limpios + sin operar con causa; operar en rojo resta'},{k:'Riesgo',v:risk,w:.25,d:'ganador vs perdedor, peor pérdida, rachas, stop definido'},{k:'Consistencia',v:cons,w:.25,d:'factor de ganancia, días verdes, peso del mejor día, estabilidad'},{k:'Resultado',v:res,w:.20,d:'neto contra objetivo y drawdown'}];
   const score=n?Math.round(dims.reduce((x,d)=>x+d.v*d.w,0)):NaN; const letter=isNaN(score)?'—':score>=85?'A':score>=70?'B':score>=55?'C':score>=40?'D':'F';
   // subjetivo (no puntúa)
   facts.zg=list.filter(t=>zoneOf(t)==='g').length; facts.zy=list.filter(t=>zoneOf(t)==='y').length; facts.zr=list.filter(t=>zoneOf(t)==='r').length; facts.zrNet=stats(list.filter(t=>zoneOf(t)==='r')).net; facts.badTrig=list.filter(t=>t.psy&&BAD_TRIGGERS.has(t.psy.trigger)).length; facts.badTrigNet=stats(list.filter(t=>t.psy&&BAD_TRIGGERS.has(t.psy.trigger))).net; facts.reviewed=list.filter(t=>t.review&&t.review.quality).length;
@@ -1179,7 +1185,11 @@ function monthEval(ym){
     if(facts.withRisk/n<0.7) T('warn','Trades sin stop cargado',`${n-facts.withRisk} de ${n} trades no tienen riesgo en puntos. Sin eso no puedo detectar si el stop se respetó.`);
     if(facts.ddUsed>=0.5) T('warn','Drawdown',`Llevás usado el ${Math.round(facts.ddUsed*100)}% del drawdown de la cuenta. Margen: ${fmt$(a.room)}.`);
     // positives
-    { const skd=skipDaysIn(ym+'-01',ym+'-31'); if(skd.length){ const byR={}; skd.forEach(ds=>{ const r=SKIP_REASONS[days[ds].skip.reason]||'Otro'; byR[r]=(byR[r]||0)+1; }); T('good','Días sin operar a conciencia',`${skd.length} día${skd.length>1?'s':''} sin operar registrado${skd.length>1?'s':''} (${Object.entries(byR).map(([r,c])=>`${r}: ${c}`).join(', ')}). No operar sin señal también es seguir el plan.`); } }
+    if(facts.dd.redTraded.length) T('bad','Operaste con el semáforo en rojo',`${facts.dd.redTraded.length} día${facts.dd.redTraded.length>1?'s':''} el check-in dijo "no operar" y operaste igual. Resultado de esos días: ${fmt$(facts.redTradedNet,true)}. Cada uno resta en Reglas.`);
+    if(facts.dd.out.length) T('warn','Días que no pudiste operar',`${facts.dd.out.length} día${facts.dd.out.length>1?'s':''} marcado${facts.dd.out.length>1?'s':''} como "${SKIP_REASONS.ausente}" u "${SKIP_REASONS.otro}". No suman ni restan en la nota, pero para la firma son días sin operar: cinco seguidos y cierran la cuenta.`);
+    if(facts.dd.redSkipped.length) T('good','Respetaste el semáforo',`${facts.dd.redSkipped.length} día${facts.dd.redSkipped.length>1?'s':''} el check-in salió en rojo y no operaste. Eso es lo que cuida la cuenta.`);
+    if(facts.dd.disc.length){ const byR={}; facts.dd.disc.forEach(ds=>{ const r=SKIP_REASONS[days[ds].skip.reason]; byR[r]=(byR[r]||0)+1; }); T('good','Días sin operar con causa',`${facts.dd.disc.length} día${facts.dd.disc.length>1?'s':''} (${Object.entries(byR).map(([r,c])=>`${r}: ${c}`).join(', ')}). Cuentan como días en plan: ${facts.planDays} de ${facts.totalDays} días del mes estuviste dentro del plan.`); }
+    else if(facts.totalDays) T(facts.planDays===facts.totalDays?'good':'warn','Días en plan',`${facts.planDays} de ${facts.totalDays} días del mes sin reglas rotas. Los días que no operás con causa (sin señal, check-in en rojo, noticias) también cuentan a favor si los marcás en Cargar.`);
     if(!facts.flagged) T('good','Cero reglas rotas',`Ningún trade fuera del tope, del horario, del tamaño o del stop. Esto es lo que mantiene una cuenta.`);
     if(facts.ratio>=1.5&&s.losses) T('good','Buena relación ganancia/pérdida',`Ganadores ${fmtN(facts.ratio,1)} veces más grandes que perdedores. Hasta un 45% de acierto te deja en verde.`);
     if(facts.days&&facts.greenDays/facts.days>=0.6) T('good','Días verdes',`${facts.greenDays} de ${facts.days} días positivos.`);
@@ -1337,6 +1347,7 @@ function switchView(v){ $$('.tabs button').forEach(b=>b.setAttribute('aria-selec
 const GOALS = [
   {key:'noReentry', label:'Cero reentradas rápidas tras una pérdida', ev:(list,fl)=>{ const n=list.filter(t=>(fl.get(t.id)||[]).includes('reentrada')).length; return {ok:n===0,txt:n?`${n} reentrada${n>1?'s':''}`:'ninguna'}; }},
   {key:'maxTrades', label:'Nunca pasar el tope de trades por día', ev:(list,fl)=>{ const n=list.filter(t=>(fl.get(t.id)||[]).includes('tope')).length; return {ok:n===0,txt:n?`${n} por encima del tope`:'ningún día pasado'}; }},
+  {key:'semaforo', label:'No operar con el check-in en rojo', ev:(list,fl,dys)=>{ const red=Object.keys(dys||{}).filter(ds=>ciRed(dys[ds])); const bad=red.filter(ds=>list.some(t=>t.date===ds)).length; const ok=red.length-bad; return {ok:bad===0,txt:bad?`${bad} día${bad>1?'s':''} en rojo operado${bad>1?'s':''}`:(red.length?`${ok} día${ok>1?'s':''} en rojo sin operar`:'ningún día en rojo')}; }},
   {key:'hours', label:'Operar solo dentro de mi horario', ev:(list,fl)=>{ const n=list.filter(t=>(fl.get(t.id)||[]).includes('horario')).length; return {ok:n===0,txt:n?`${n} fuera de horario`:'todo en horario'}; }},
   {key:'stopLoaded', label:'Todos los trades con stop cargado', ev:(list)=>{ const n=list.filter(t=>!(t.risk>0)).length; return {ok:n===0&&list.length>0,txt:n?`${n} sin stop`:'todos con stop'}; }},
   {key:'noStopBreak', label:'Ninguna pérdida mayor al stop planeado', ev:(list,fl)=>{ const n=list.filter(t=>(fl.get(t.id)||[]).includes('stop')).length; return {ok:n===0,txt:n?`${n} pasaron el stop`:'stops respetados'}; }},

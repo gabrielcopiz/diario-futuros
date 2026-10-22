@@ -290,6 +290,10 @@ dialog.light img{max-width:96vw;max-height:92vh;display:block;border-radius:12px
 .sessionrow{display:grid;grid-template-columns:repeat(5,1fr);gap:10px}
 .daycard{background:var(--surface2);border-radius:var(--r-sm);padding:14px 14px 12px;border:1px solid var(--line)}
 .daycard.bad{border-color:color-mix(in srgb,var(--bad) 55%,transparent)}
+.daycard.skip{border-style:dashed;border-color:color-mix(in srgb,var(--good) 45%,transparent)}
+.daycard.skip .n{color:var(--good)}
+.cal .c.skip{border-style:dashed;border-color:color-mix(in srgb,var(--good) 45%,transparent)}
+.cal .c.skip .n{color:var(--good);font-size:10.5px}
 .daycard .d{font-size:12px;color:var(--muted);font-weight:600}
 .daycard .p{font-weight:800;font-size:20px;margin-top:4px;letter-spacing:-.03em;font-variant-numeric:tabular-nums}
 .daycard .n{font-size:12.5px;color:var(--ink2);margin-top:2px}.daycard .flag{font-size:12px;color:var(--bad);margin-top:5px;font-weight:600}
@@ -434,6 +438,7 @@ dialog.light img{max-width:96vw;max-height:92vh;display:block;border-radius:12px
       <label class="f"><span>Intención de hoy (una frase)</span><input type="text" id="ci_intent" placeholder="ej. Solo P3 Swing mitigado. Máximo 3 trades."></label>
     </div>
     <div id="ciVerdict" class="banner" style="margin-top:12px" hidden></div>
+    <div id="skipBox" style="margin-top:14px;padding-top:12px;border-top:1px solid var(--line)"><div class="row spread" style="flex-wrap:wrap;gap:10px"><div><b>¿Día sin operar?</b> <span class="hint">Marcarlo también es llevar el diario: no operar sin señal es seguir el plan.</span></div><div class="row" style="gap:8px"><input type="date" id="sk_date" style="width:150px"><div class="seg" id="sk_reasons"></div></div></div><div class="row" id="sk_noteRow" style="margin-top:10px;gap:8px" hidden><input type="text" id="sk_note" placeholder="Qué pasó en una frase (opcional)" style="flex:1"><button class="btn sm primary" type="button" id="sk_save">Guardar día sin operar</button><button class="btn sm" type="button" id="sk_clear" hidden>Quitar</button></div><p class="hint" id="sk_msg" style="margin:8px 0 0"></p></div>
   </div>
   <div class="grid cols-4" id="todayTiles" style="margin-top:16px"></div>
   <div class="grid cols-2-1" style="margin-top:16px;align-items:start">
@@ -904,11 +909,22 @@ function demoTrades(){
 }
 
 // ---------- render shared ----------
-function renderStrip(){ const a=accountState(); const today=stats(trades.filter(t=>t.date===todayStr())); const ci=days[todayStr()]||{}; const reasons=[]; if(ci.sleep!=null&&ci.sleep<6) reasons.push(1); if(ci.stress>=4) reasons.push(1); if(ci.energy!=null&&ci.energy<=2) reasons.push(1); if(ci.mind==='revuelta') reasons.push(1); const filled=ci.sleep!=null||ci.energy||ci.stress||ci.mind; const red=trades.filter(t=>t.date===todayStr()&&zoneOf(t)==='r').length; const sem=!filled?'n':(reasons.length>=2||red?'r':(reasons.length===1?'y':'g')); const semTxt={n:'Sin check-in',g:'En condiciones',y:'Con cuidado',r:'No operar'}[sem];
+function renderStrip(){ const a=accountState(); const today=stats(trades.filter(t=>t.date===todayStr())); const ci=days[todayStr()]||{}; const reasons=[]; if(ci.sleep!=null&&ci.sleep<6) reasons.push(1); if(ci.stress>=4) reasons.push(1); if(ci.energy!=null&&ci.energy<=2) reasons.push(1); if(ci.mind==='revuelta') reasons.push(1); const filled=ci.sleep!=null||ci.energy||ci.stress||ci.mind; const red=trades.filter(t=>t.date===todayStr()&&zoneOf(t)==='r').length; let sem=!filled?'n':(reasons.length>=2||red?'r':(reasons.length===1?'y':'g')); let semTxt={n:'Sin check-in',g:'En condiciones',y:'Con cuidado',r:'No operar'}[sem]; if(ci.skip&&!today.n){ sem='g'; semTxt='Sin operar hoy'; }
   const meP=profiles.find(p=>p.id===pid); $('#strip').innerHTML=`<div class="cell title"><h1>${esc(meP?meP.name:(settings.firm||'Cuenta fondeada'))}</h1><div class="sub">${esc(settings.firm||'Sin cuenta cargada')}${settings.firm?(settings.phase==='funded'?' · Fondeada':' · Evaluación'):''} · ${fmtDay(todayStr())}</div></div><div class="cell"><div class="l">Balance</div><div class="v">${fmt$(a.bal)}</div></div><div class="cell"><div class="l">Hoy</div><div class="v ${cls(today.net)}">${fmt$(today.net,true)}</div></div><div class="cell"><div class="l">Total</div><div class="v ${cls(a.cum)}">${fmt$(a.cum,true)}</div></div><div class="cell"><div class="l">Margen al drawdown</div><div class="v ${a.dd&&a.room<=a.dd*.25?'neg':(a.dd&&a.room<=a.dd*.5?'warn':'')}">${a.dd?fmt$(a.room):'—'}</div></div><div class="cell"><div class="l">Trades hoy</div><div class="v ${settings.maxt>0&&today.n>=settings.maxt?'warn':''}">${today.n}${settings.maxt>0?' / '+settings.maxt:''}</div></div><div class="cell"><div class="l">Semáforo</div><div class="sem ${sem}"><i></i>${semTxt}</div></div>`; }
-function renderAll(){ try{ refreshAcctSelect(); renderCargarEmpresa(); }catch(e){} renderStrip(); renderReminders(); renderTodayTiles(); renderTodayList(); renderTradesTable(); renderWeek(); renderMonth(); renderAccount(); $('#demoBanner').hidden=!trades.some(t=>t.demo); $('#brandSub').textContent=settings.firm||'ES · NQ'; }
+function renderAll(){ try{ refreshAcctSelect(); renderCargarEmpresa(); renderSkipBox(); }catch(e){} renderStrip(); renderReminders(); renderTodayTiles(); renderTodayList(); renderTradesTable(); renderWeek(); renderMonth(); renderAccount(); $('#demoBanner').hidden=!trades.some(t=>t.demo); $('#brandSub').textContent=settings.firm||'ES · NQ'; }
 function tiles(el,items){ el.innerHTML=items.map(i=>`<div class="tile"><div class="lbl">${i.l}</div><div class="val ${i.c||''}">${i.v}</div>${i.s?`<div class="sub">${i.s}</div>`:''}</div>`).join(''); }
 function curWeekOfToday(){ return mondayOf(todayStr()); }
+
+// ---------- DÍA SIN OPERAR ----------
+const SKIP_REASONS={senal:'Sin señal del plan',checkin:'Check-in en rojo',noticias:'Noticias o feriado',ausente:'No pude operar',otro:'Otro'};
+function skipOf(ds){ const d=days[ds]; return d&&d.skip?d.skip:null; }
+function skipLabel(sk){ return sk?(SKIP_REASONS[sk.reason]||'Sin operar')+(sk.note?' · '+sk.note:''):''; }
+function renderSkipBox(){ const el=$('#skipBox'); if(!el) return; const di=$('#sk_date'); if(!di.value) di.value=todayStr(); const ds=di.value; const sk=skipOf(ds); const ts=trades.filter(t=>t.date===ds).length; const seg=$('#sk_reasons');
+  seg.innerHTML=Object.entries(SKIP_REASONS).map(([k,v])=>`<button type="button" data-v="${k}" aria-pressed="${sk&&sk.reason===k?'true':'false'}">${v}</button>`).join('');
+  const pressed=$('#sk_reasons button[aria-pressed=true]'); $('#sk_noteRow').hidden=!pressed; $('#sk_note').value=sk?(sk.note||''):($('#sk_note').value||''); $('#sk_clear').hidden=!sk;
+  $('#sk_msg').textContent=ts?`${fmtDay(ds)} tiene ${ts} trade${ts>1?'s':''} cargado${ts>1?'s':''}: no se puede marcar como día sin operar.`:(sk?`${fmtDay(ds)}: día sin operar guardado (${SKIP_REASONS[sk.reason]||'sin motivo'}).`:''); seg.querySelectorAll('button').forEach(b=>b.disabled=!!ts); }
+async function saveSkip(ds,reason,note){ const d={...(days[ds]||{})}; if(reason) d.skip={reason,note:(note||'').trim(),updated:Date.now()}; else delete d.skip; await saveDay(ds,d); }
+function skipDaysIn(from,to){ return Object.keys(days).filter(ds=>ds>=from&&ds<=to&&days[ds].skip&&!trades.some(t=>t.date===ds)); }
 
 // ---------- CHECK-IN ----------
 function buildScale(el,max=5){ el.innerHTML=Array.from({length:max},(_,i)=>`<button type="button" data-v="${i+1}" aria-pressed="false">${i+1}</button>`).join(''); }
@@ -941,7 +957,7 @@ function renderTodayTiles(){
   const limit=settings.mystop>0?settings.mystop:(settings.dll>0?settings.dll:0);
   const red=tl.filter(t=>zoneOf(t)==='r').length;
   tiles($('#todayTiles'),[
-    {l:'Hoy',v:fmt$(s.net,true),c:cls(s.net),s:s.n?`${s.n} trade${s.n>1?'s':''} · ${s.wins} ganado${s.wins!==1?'s':''}`:'Sin trades todavía'},
+    {l:'Hoy',v:fmt$(s.net,true),c:cls(s.net),s:s.n?`${s.n} trade${s.n>1?'s':''} · ${s.wins} ganado${s.wins!==1?'s':''}`:(skipOf(todayStr())?'No operé hoy · '+(SKIP_REASONS[skipOf(todayStr()).reason]||''):'Sin trades todavía')},
     {l:'Trades hoy / máx.',v:`${s.n}${settings.maxt>0?' / '+settings.maxt:''}`,c:settings.maxt>0&&s.n>=settings.maxt?'warn':'',s:settings.maxt>0&&s.n>=settings.maxt?'Llegaste al tope. Cerrá la plataforma.':'Según tu plan'},
     {l:'Stop diario',v:limit?fmt$(Math.max(0,limit+Math.min(0,s.net))):'—',c:limit&&s.net<0&&-s.net>=limit*0.8?'neg':'',s:limit?'Margen que te queda hoy':'Configuralo en Cuenta'},
     {l:'Cabeza hoy',v:red?`${red} en rojo`:(s.n?'En zona':'—'),c:red?'neg':(s.n?'pos':''),s:red?'Entraste en zona roja. Pará.':(s.n?'Ninguna entrada en rojo':'Cargá el primer trade')},
@@ -949,7 +965,7 @@ function renderTodayTiles(){
 }
 function renderTodayList(){
   const tl=sortTrades(trades.filter(t=>t.date===todayStr())); const el=$('#todayList');
-  if(!tl.length){ el.innerHTML='<p class="hint" style="margin:0">Todavía no cargaste ningún trade de hoy.</p>'; return; }
+  if(!tl.length){ const sk=skipOf(todayStr()); el.innerHTML=sk?`<p class="hint" style="margin:0">Hoy marcaste <b>día sin operar</b>: ${esc(skipLabel(sk))}.</p>`:'<p class="hint" style="margin:0">Todavía no cargaste ningún trade de hoy. Si hoy no operaste, marcalo arriba.</p>'; return; }
   el.innerHTML=`<table><thead><tr><th>Hora</th><th>Instr.</th><th>Lado</th><th class="num">Pts</th><th class="num">Neto</th><th>Cabeza</th><th></th></tr></thead><tbody>`+tl.map(t=>{const z=zoneOf(t);return `<tr><td class="mono">${esc(t.time||'—')}</td><td>${esc(t.inst)}</td><td><span class="pill ${t.side}">${t.side==='long'?'Long':'Short'}</span></td><td class="num">${fmtN(t.pts)}</td><td class="num ${cls(t.net)}">${fmt$(t.net,true)}</td><td>${z?`<span class="pill ${z}">${esc(t.psy.before)}</span>`:'—'}</td><td><button class="iconbtn" data-edit="${t.id}" title="Editar">✎</button></td></tr>`;}).join('')+'</tbody></table>';
 }
 function chipsHtml(list,kind,extra=''){ return list.map(v=>`<button type="button" class="chip ${extra}" data-k="${kind}" data-v="${esc(v)}" aria-pressed="false">${esc(v)}</button>`).join(''); }
@@ -1040,7 +1056,7 @@ function renderWeek(){ try{ renderWeekEmpresa(); }catch(e){}
   const dd=[0,1,2,3,4].map(i=>{ const ds=addDays(mon,i); const ts=list.filter(t=>t.date===ds); return {ds,ts,s:stats(ts)}; });
   const tradedDays=dd.filter(x=>x.ts.length).length;
   tiles($('#wkTiles'),[
-    {l:'Resultado neto',v:fmt$(s.net,true),c:cls(s.net),s:s.n?`${s.n} trades en ${tradedDays} día${tradedDays!==1?'s':''} · comisiones ${fmt$(s.comm)}`:'Sin trades'},
+    {l:'Resultado neto',v:fmt$(s.net,true),c:cls(s.net),s:(()=>{ const sk=skipDaysIn(mon,addDays(mon,6)).length; const skt=sk?` · ${sk} día${sk>1?'s':''} sin operar a conciencia`:''; return s.n?`${s.n} trades en ${tradedDays} día${tradedDays!==1?'s':''}${skt} · comisiones ${fmt$(s.comm)}`:(sk?`Sin trades${skt}`:'Sin trades'); })()},
     {l:'Acierto',v:pct(s.wr),s:s.n?`${s.wins} ganados · ${s.losses} perdidos`:'—'},
     {l:'Factor de ganancia',v:isNaN(s.pf)?'—':(s.pf===Infinity?'∞':fmtN(s.pf,2)),c:s.pf>=1.5?'pos':(s.pf<1&&s.n?'neg':''),s:s.n?`Prom. ganador ${fmt$(s.avgW)} · perdedor ${fmt$(s.avgL)}`:'Ganado ÷ perdido'},
     {l:'Respeté el plan',v:pct(s.plan),c:s.plan>=.8?'pos':(s.n&&s.plan<.6?'neg':''),s:s.n?(s.maxLossStreak>=3?`Racha de ${s.maxLossStreak} pérdidas seguidas`:`Esperanza ${fmt$(s.exp,true)} por trade`):'—'},
@@ -1048,7 +1064,7 @@ function renderWeek(){ try{ renderWeekEmpresa(); }catch(e){}
   let cum=0; const pts=list.map(t=>{cum+=t.net; return {y:cum,t};});
   $('#wkEquity').innerHTML=pts.length?lineChart(pts,{labels:pts.map(p=>DAYS[dow(p.t.date)]+' '+(p.t.time||''))}):'<p class="hint" style="margin:0">Sin trades esta semana.</p>';
   $('#wkDays').innerHTML=dd.map(x=>{ const flags=[]; if(settings.maxt>0&&x.ts.length>settings.maxt) flags.push(`${x.ts.length} trades (máx. ${settings.maxt})`); const lim=settings.mystop>0?settings.mystop:(settings.dll>0?settings.dll:0); if(lim&&x.s.net<=-lim) flags.push('Pasaste el stop diario'); const off=x.ts.filter(t=>!t.plan).length; if(off) flags.push(`${off} fuera del plan`); const red=x.ts.filter(t=>zoneOf(t)==='r').length; if(red) flags.push(`${red} en zona roja`);
-    return `<div class="daycard ${flags.length?'bad':''}"><div class="d">${DAYS[dow(x.ds)]} ${parseDate(x.ds).getDate()}</div><div class="p ${cls(x.s.net)}">${x.ts.length?fmt$(x.s.net,true):'—'}</div><div class="n">${x.ts.length?`${x.ts.length} tr · ${pct(x.s.wr)}`:'sin operar'}</div>${flags.map(f=>`<div class="flag">${f}</div>`).join('')}</div>`; }).join('');
+    const sk=!x.ts.length?skipOf(x.ds):null; return `<div class="daycard ${flags.length?'bad':(sk?'skip':'')}"><div class="d">${DAYS[dow(x.ds)]} ${parseDate(x.ds).getDate()}</div><div class="p ${cls(x.s.net)}">${x.ts.length?fmt$(x.s.net,true):'—'}</div><div class="n" ${sk&&sk.note?`title="${esc(sk.note)}"`:''}>${x.ts.length?`${x.ts.length} tr · ${pct(x.s.wr)}`:(sk?`No operé · ${esc(SKIP_REASONS[sk.reason]||'')}`:'sin registro')}</div>${flags.map(f=>`<div class="flag">${f}</div>`).join('')}</div>`; }).join('');
   $('#wkBars').innerHTML=s.n?barChart(dd.map(x=>({label:DAYS[dow(x.ds)],v:x.s.net,demo:x.ts.some(t=>t.demo)}))):'';
   // zones
   const zs=['g','y','r'].map(z=>{ const ts=list.filter(t=>zoneOf(t)===z); const st=stats(ts); return {z,ts,st}; }); const withZone=zs.reduce((a,b)=>a+b.ts.length,0);
@@ -1163,6 +1179,7 @@ function monthEval(ym){
     if(facts.withRisk/n<0.7) T('warn','Trades sin stop cargado',`${n-facts.withRisk} de ${n} trades no tienen riesgo en puntos. Sin eso no puedo detectar si el stop se respetó.`);
     if(facts.ddUsed>=0.5) T('warn','Drawdown',`Llevás usado el ${Math.round(facts.ddUsed*100)}% del drawdown de la cuenta. Margen: ${fmt$(a.room)}.`);
     // positives
+    { const skd=skipDaysIn(ym+'-01',ym+'-31'); if(skd.length){ const byR={}; skd.forEach(ds=>{ const r=SKIP_REASONS[days[ds].skip.reason]||'Otro'; byR[r]=(byR[r]||0)+1; }); T('good','Días sin operar a conciencia',`${skd.length} día${skd.length>1?'s':''} sin operar registrado${skd.length>1?'s':''} (${Object.entries(byR).map(([r,c])=>`${r}: ${c}`).join(', ')}). No operar sin señal también es seguir el plan.`); } }
     if(!facts.flagged) T('good','Cero reglas rotas',`Ningún trade fuera del tope, del horario, del tamaño o del stop. Esto es lo que mantiene una cuenta.`);
     if(facts.ratio>=1.5&&s.losses) T('good','Buena relación ganancia/pérdida',`Ganadores ${fmtN(facts.ratio,1)} veces más grandes que perdedores. Hasta un 45% de acierto te deja en verde.`);
     if(facts.days&&facts.greenDays/facts.days>=0.6) T('good','Días verdes',`${facts.greenDays} de ${facts.days} días positivos.`);
@@ -1181,7 +1198,7 @@ function calendarHtml(ym,byDay,flags){
   for(let i=0;i<lead;i++) h+='<div></div>';
   for(let d=1;d<=last;d++){ const ds=`${y}-${String(m).padStart(2,'0')}-${String(d).padStart(2,'0')}`; const ts=byDay.get(ds)||[]; const st=stats(ts); const wd=(new Date(y,m-1,d).getDay()+6)%7; const fl=ts.some(t=>(flags.get(t.id)||[]).length);
     const maxAbs=Math.max(1,...[...byDay.values()].map(x=>Math.abs(stats(x).net))); const k=ts.length?Math.round(10+Math.abs(st.net)/maxAbs*40):0;
-    h+=`<div class="c ${wd>=5&&!ts.length?'off':''} ${fl?'flag':''} ${ds===today?'today':''} ${ts.length?(st.net>=0?'pos':'neg'):''}" style="--k:${k}%" ${ts.length?`data-tip="${esc(fmtDay(ds)+' · '+ts.length+' trades · '+fmt$(st.net,true))}"`:''}><div class="d">${d}</div>${ts.length?`<div class="v ${cls(st.net)}">${fmt$(st.net,true)}</div><div class="n">${ts.length} tr · ${pct(st.wr)}</div>`:'<div class="n"></div>'}</div>`; }
+    const sk=!ts.length?skipOf(ds):null; h+=`<div class="c ${wd>=5&&!ts.length?'off':''} ${fl?'flag':''} ${ds===today?'today':''} ${ts.length?(st.net>=0?'pos':'neg'):(sk?'skip':'')}" style="--k:${k}%" ${ts.length?`data-tip="${esc(fmtDay(ds)+' · '+ts.length+' trades · '+fmt$(st.net,true))}"`:(sk?`data-tip="${esc(fmtDay(ds)+' · no operé · '+skipLabel(sk))}"`:'')}><div class="d">${d}</div>${ts.length?`<div class="v ${cls(st.net)}">${fmt$(st.net,true)}</div><div class="n">${ts.length} tr · ${pct(st.wr)}</div>`:(sk?'<div class="n">no operé</div>':'<div class="n"></div>')}</div>`; }
   return h+'</div>';
 }
 function tradeBars(list,flags){ return list.length?barChart(list.map((t,i)=>({label:String(i+1),v:t.net,flag:(flags.get(t.id)||[]).length>0,tip:`${fmtDay(t.date)} ${t.time||''} · ${t.inst} ${t.side==='long'?'L':'S'}×${t.qty} · ${fmt$(t.net,true)}${(flags.get(t.id)||[]).length?' · ▲ '+(flags.get(t.id)||[]).map(k=>FLAG_NAME[k]).join(', '):''}`})),{h:170,dense:list.length>20}):'<p class="hint" style="margin:0">—</p>'; }
@@ -1480,7 +1497,7 @@ function calcRetirable(a,list){
   if(!F) return {profit,days,share,avail:Math.max(0,profit),checks:[{ok:false,txt:'Reglas de esta firma sin cargar: la app no calcula el retiro.'}],ok:false,net:null,unknown:true,per};
   const checks=[], warns=[]; let avail=profit;
   if(F.livesimCap&&per.n===0){ const cap=F.livesimCap; if(profit>=cap) warns.push({k:'bad',t:`Tope de la LiveSim alcanzado (${fmt$(cap)}): no operes más esta cuenta`,txt:`Lo que ganes por encima de ${fmt$(cap)} se pierde por contrato. Pedí el retiro hoy; la cuenta pasa a real con el broker.`}); else if(profit>=cap*0.8) warns.push({k:'warn',t:`Estás a ${fmt$(cap-profit)} del tope de la LiveSim (${fmt$(cap)})`,txt:`Por encima de ${fmt$(cap)} la ganancia se pierde. Achicá el tamaño para no pasarte y, al tocar ${fmt$(cap)}, cerrá todo y pedí el retiro.`}); }
-  if(F.absenceDays){ const lastD=nets.length?nets.map(x=>x.d).sort().pop():(a.funded||null); if(lastD){ let miss=0, d=lastD; while(d<todayStr()){ d=addDays(d,1); if(parseDate(d).getDay()%6) miss++; } if(miss>=3) warns.push({k:miss>=4?'bad':'warn',t:`${miss} día${miss===1?'':'s'} hábil${miss===1?'':'es'} sin operar ${acctName(a)}`,txt:`Al ${F.absenceDays}º día seguido sin operar y sin avisar, ${a.firm} cierra la cuenta. Hacé al menos un trade hoy o avisá a soporte antes.`}); } }
+  if(F.absenceDays){ const lastD=nets.length?nets.map(x=>x.d).sort().pop():(a.funded||null); if(lastD){ let miss=0, d=lastD; while(d<todayStr()){ d=addDays(d,1); if(parseDate(d).getDay()%6) miss++; } if(miss>=3) warns.push({k:miss>=4?'bad':'warn',t:`${miss} día${miss===1?'':'s'} hábil${miss===1?'':'es'} sin operar ${acctName(a)}`,txt:`Al ${F.absenceDays}º día seguido sin operar y sin avisar, ${a.firm} cierra la cuenta. Hacé al menos un trade hoy o avisá a soporte antes. Los días marcados como 'sin operar' cuentan igual para la firma.`}); } }
   if(F.mindays) checks.push({ok:days>=F.mindays,txt:days>=F.mindays?`${days} días operados (mínimo ${F.mindays})`:`Faltan ${F.mindays-days} días operados (mínimo ${F.mindays})`});
   if(F.winDays){ const w=nets.filter(x=>x.net>=F.winDays.min).length; checks.push({ok:w>=F.winDays.n,txt:w>=F.winDays.n?`${w} días ganadores de ${fmt$(F.winDays.min)} o más`:`Faltan ${F.winDays.n-w} días ganadores de ${fmt$(F.winDays.min)} o más`}); }
   if(F.consist){ const lim=F.consist/100; const ok=posSum>0&&share<=lim; checks.push({ok,txt:posSum<=0?`Consistencia ${F.consist}%: todavía sin ganancia`:(ok?`Tu mejor día es el ${pct(share)} de lo ganado (máximo ${F.consist}%)`:`Tu mejor día es el ${pct(share)}: necesitás ${fmt$(best/lim-posSum)} más en otros días para bajar del ${F.consist}%`)}); }
@@ -1792,6 +1809,11 @@ function init(){
   document.addEventListener('dragover',e=>e.preventDefault()); document.addEventListener('drop',e=>{ e.preventDefault(); const f=e.dataTransfer.files[0]; if(!f||f.type.startsWith('image/')) return; const r=new FileReader(); r.onload=()=>{ try{ showImport(parseCSV(r.result)); }catch(err){ toast(err.message); } }; r.readAsText(f); });
   $('#impCancel').addEventListener('click',()=>$('#importDlg').close());
   $('#impConfirm').addEventListener('click',async()=>{ $('#impConfirm').disabled=true; let n=0; for(const t of pendingImport){ const prev=trades.find(x=>x.id===t.id); const merged=prev?{...t,risk:prev.risk,setup:prev.setup,filters:prev.filters,psy:prev.psy,shots:prev.shots,err:prev.err,plan:prev.plan,notes:prev.notes,review:prev.review,created:prev.created}:t; try{ await saveTrade(merged); n++; }catch(e){} } $('#impConfirm').disabled=false; $('#importDlg').close(); $('#csvText').value=''; toast(n+' trades importados. Ahora completá estrategia y cabeza en cada uno.'); switchView('trades'); });
+  // día sin operar
+  renderSkipBox(); $('#sk_date').addEventListener('change',renderSkipBox);
+  $('#sk_reasons').addEventListener('click',e=>{ const b=e.target.closest('button'); if(!b||b.disabled) return; const was=b.getAttribute('aria-pressed')==='true'; $$('#sk_reasons button').forEach(x=>x.setAttribute('aria-pressed','false')); if(!was) b.setAttribute('aria-pressed','true'); $('#sk_noteRow').hidden=was; if(!was) $('#sk_note').focus(); });
+  $('#sk_save').addEventListener('click',async()=>{ const ds=$('#sk_date').value||todayStr(); const b=$('#sk_reasons button[aria-pressed=true]'); if(!b){ toast('Elegí el motivo'); return; } if(trades.some(t=>t.date===ds)){ toast('Ese día tiene trades cargados'); return; } await saveSkip(ds,b.dataset.v,$('#sk_note').value); toast(`${fmtDay(ds)}: día sin operar guardado`); renderSkipBox(); renderAll(); });
+  $('#sk_clear').addEventListener('click',async()=>{ const ds=$('#sk_date').value||todayStr(); await saveSkip(ds,null); $('#sk_note').value=''; toast('Marca quitada'); renderSkipBox(); renderAll(); });
   // check-in
   const ciSave=()=>{ clearTimeout(ciTimer); ciTimer=setTimeout(async()=>{ const ci=readCheckin(); await saveDay(todayStr(),ci); $('#ciSaved').textContent='Guardado'; ciVerdict(ci); },600); };
   ['ci_energy','ci_stress','ci_mind'].forEach(id=>$('#'+id).addEventListener('click',e=>{ const b=e.target.closest('button'); if(!b) return; const was=b.getAttribute('aria-pressed')==='true'; $$(`#${id} button`).forEach(x=>x.setAttribute('aria-pressed','false')); if(!was) b.setAttribute('aria-pressed','true'); ciSave(); }));
